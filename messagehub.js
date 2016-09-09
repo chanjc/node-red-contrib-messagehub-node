@@ -82,33 +82,57 @@ module.exports = function(RED) {
       return Math.floor((Math.random() * 100) + 1);
     }
 
-    node.log(topic);
-    instance.consume('nodered-' + topic + "-" + random(), 'nodered', { 'auto.offset.reset': 'largest' })
+    instance.consume('nodered-' + topic + "-" + random(), 'nodered' + random(), { 'auto.offset.reset': 'largest' })
     .then(function(response) {
+	  node.log("Consumer: " + 'nodered' + random() + " is created.");
       consumerInstance = response[0];
     })
     .fail(function(error) {
       node.error(error);
+	  return;
     });
 
     try {
-      this.log("Consumer created...");
       setInterval(function() {
-        consumerInstance.get(topic)
-        .then(function(data) {
-          for(var i=0; i<data.length; i++) {
-            node.send({payload: data[i]});
-          }
-        })
-        .fail(function(err) {
-          node.error(err);
-        });
+		if(consumerInstance){
+			try{
+				consumerInstance.get(topic)
+				.then(function(data) {
+				  for(var i=0; i<data.length; i++) {
+					node.send({payload: data[i]});
+				  }
+				})
+				.fail(function(err) {
+				  node.error(err);
+				});
+			}catch(e){
+				node.error(e);
+				return;
+			}
+		}
       }, 2000);
     }
     catch(e){
       node.error(e);
       return;
     }
+	this.on('close', function(done){
+		if(consumerInstance){
+			node.log("Removing consumer instance: ");
+			consumerInstance.remove()
+			.fin(function(response){
+				try{
+					node.log("res 1 " + JSON.stringify(response));
+				}catch(e){
+					node.log("res 2 " + response);
+				}
+				// reset consumerInstance if flow is redeployed
+				consumerInstance = null;
+				done();
+			});
+			
+		}
+	});
   }
 
   RED.nodes.registerType("messagehub in", MessageHubConsumer);
